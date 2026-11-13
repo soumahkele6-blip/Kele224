@@ -3,84 +3,134 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Kele-ia — Assistant IA</title>
+  <title>Kele-ia</title>
   <style>
-    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-    body {
-      margin: 0;
-      min-height: 100dvh;
-      background: #0b1120;
-      color: #f8fafc;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .card {
-      max-width: 560px;
-      width: 100%;
-      background: #111827;
-      border: 1px solid #1f2937;
-      border-radius: 18px;
-      padding: 28px 24px;
-      text-align: center;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
-    }
-    .badge {
-      display: inline-block;
-      background: rgba(41, 163, 131, 0.15);
-      color: #29a383;
-      border: 1px solid rgba(41, 163, 131, 0.4);
-      padding: 6px 14px;
-      border-radius: 999px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      margin-bottom: 16px;
-    }
-    h1 {
-      margin: 0 0 12px;
-      font-size: 2rem;
-    }
-    p {
-      color: #cbd5e1;
-      line-height: 1.6;
-      margin: 0 0 18px;
-      font-size: 1rem;
-    }
-    .info {
-      background: #0f172a;
-      border: 1px solid #1e293b;
-      border-radius: 12px;
-      padding: 14px;
-      font-size: 0.9rem;
-      color: #94a3b8;
-      text-align: left;
-    }
+    * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: #0b1120; color: #f8fafc; display: flex; flex-direction: column; height: 100dvh; }
+    header { padding: 12px 16px; background: #111827; border-bottom: 1px solid #1f2937; }
+    header strong { color: #29a383; }
+    #status { font-size: 0.82rem; color: #94a3b8; margin-top: 2px; }
+    #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .msg { max-width: 85%; padding: 10px 14px; border-radius: 14px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
+    .user { background: #29a383; color: #052e16; font-weight: 500; align-self: flex-end; }
+    .ai { background: #111827; border: 1px solid #1f2937; align-self: flex-start; }
+    footer { padding: 10px; background: #111827; border-top: 1px solid #1f2937; display: flex; gap: 8px; }
+    input { flex: 1; padding: 12px; border-radius: 12px; border: 1px solid #334155; background: #0b1120; color: white; font-size: 1rem; }
+    button { padding: 0 18px; border-radius: 12px; border: none; background: #29a383; color: #052e16; font-weight: bold; }
+    button:disabled { opacity: 0.4; }
   </style>
 </head>
 <body>
 
-  <main class="card">
-    <div class="badge">● IA Locale &amp; Gratuite</div>
-    <h1>Bienvenue sur Kele-ia</h1>
-    <p>
-      Pose-moi n’importe quelle question. Réponses directes, structurées et factuelles, directement depuis ton navigateur.
-    </p>
-    <div class="info">
-      👉 <b>Comment démarrer :</b> appuie sur la bulle verte en bas à droite.<br /><br />
-      ⚡ <i>La toute première ouverture télécharge le modèle (~290 Mo) dans ton navigateur, puis tout fonctionne rapidement sans compte ni abonnement.</i>
-    </div>
-  </main>
+  <header>
+    <strong>● Kele-ia</strong>
+    <div id="status">Vérification du navigateur...</div>
+  </header>
 
-  <script
-    src="https://cdn.aidekin.com/loader.js"
-    data-title="Kele-ia"
-    data-greeting="Bonjour ! Je suis Kele-ia. Pose-moi n'importe quelle question : je réponds de façon directe, claire et factuelle."
-    data-system-prompt="Tu es Kele-ia, un assistant polyvalent, direct, cohérent et professionnel, ouvert à tous les sujets. Réponds dans la langue de l'utilisateur (en français par défaut) de façon claire, structurée et sans détour inutile. Règle absolue : n'invente, ne simule et ne suppose jamais aucun fait, chiffre, lien, citation ou source. Si tu ne connais pas la réponse avec certitude ou si une information te manque, dis clairement « Je ne sais pas » ou explique exactement ce qu'il manque, sans jamais combler les vides par de la fiction."
-    data-accent="#29a383"
-    data-reasoning="true"
-    defer
-  ></script>
+  <div id="chat">
+    <div class="msg ai">Bonjour ! Je suis Kele-ia. Patiente un instant pendant mon chargement initial...</div>
+  </div>
 
+  <footer>
+    <input id="prompt" type="text" placeholder="Pose ta question..." disabled />
+    <button id="send" disabled>Envoyer</button>
+  </footer>
+
+  <script type="module">
+    import { pipeline, TextStreamer } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4/dist/transformers.min.js";
+
+    const statusEl = document.getElementById("status");
+    const chatEl = document.getElementById("chat");
+    const inputEl = document.getElementById("prompt");
+    const sendBtn = document.getElementById("send");
+
+    let generator = null;
+    const history = [{
+      role: "system",
+      content: "Tu es Kele-ia, un assistant polyvalent, direct, cohérent et professionnel, ouvert à tous les sujets. Réponds dans la langue de l'utilisateur (en français par défaut) de façon claire, structurée et sans détour inutile. Règle absolue : n'invente, ne simule et ne suppose jamais aucun fait, chiffre, lien, citation ou source. Si tu ne connais pas la réponse avec certitude ou si une information te manque, dis clairement « Je ne sais pas » ou explique exactement ce qu'il manque, sans jamais combler les vides par de la fiction."
+    }];
+
+    function addMsg(text, cls) {
+      const div = document.createElement("div");
+      div.className = "msg " + cls;
+      div.textContent = text;
+      chatEl.appendChild(div);
+      chatEl.scrollTop = chatEl.scrollHeight;
+      return div;
+    }
+
+    async function init() {
+      let hasWebGPU = false;
+      try {
+        if (navigator.gpu) {
+          const adapter = await navigator.gpu.requestAdapter();
+          hasWebGPU = !!adapter;
+        }
+      } catch (e) {}
+
+      const mode = hasWebGPU ? "webgpu" : "wasm";
+      statusEl.textContent = `Chargement du modèle (mode ${mode.toUpperCase()})...`;
+
+      try {
+        generator = await pipeline(
+          "text-generation",
+          "onnx-community/Qwen3-0.6B-ONNX",
+          {
+            device: mode,
+            dtype: hasWebGPU ? "q4f16" : "q4",
+            progress_callback: (p) => {
+              if (p.status === "progress" && p.progress) {
+                statusEl.textContent = `Téléchargement (${mode.toUpperCase()}) : ${Math.round(p.progress)}%`;
+              }
+            }
+          }
+        );
+        statusEl.textContent = `✅ Prêt (${mode.toUpperCase()})`;
+        inputEl.disabled = false;
+        sendBtn.disabled = false;
+      } catch (err) {
+        statusEl.textContent = "❌ Erreur de chargement";
+        addMsg("Erreur : " + err.message, "ai");
+      }
+    }
+
+    async function envoyer() {
+      const texte = inputEl.value.trim();
+      if (!texte || !generator) return;
+
+      inputEl.value = "";
+      inputEl.disabled = true;
+      sendBtn.disabled = true;
+
+      addMsg(texte, "user");
+      const aiBox = addMsg("Réflexion...", "ai");
+      history.push({ role: "user", content: texte });
+
+      let reponse = "";
+      const streamer = new TextStreamer(generator.tokenizer, {
+        skip_prompt: true,
+        skip_special_tokens: true,
+        callback_function: (morceau) => {
+          reponse += morceau;
+          aiBox.textContent = reponse;
+          chatEl.scrollTop = chatEl.scrollHeight;
+        }
+      });
+
+      const out = await generator(history, {
+        max_new_tokens: 400,
+        do_sample: false,
+        streamer
+      });
+
+      history.push({ role: "assistant", content: out[0].generated_text.at(-1).content });
+      inputEl.disabled = false;
+      sendBtn.disabled = false;
+    }
+
+    sendBtn.addEventListener("click", envoyer);
+    inputEl.addEventListener("keypress", (e) => { if (e.key === "Enter") envoyer(); });
+    init();
+  </script>
 </body>
 </html>
