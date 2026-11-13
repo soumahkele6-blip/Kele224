@@ -5,50 +5,49 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Kele-ia</title>
   <style>
-    * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
     body { margin: 0; background: #0b1120; color: #f8fafc; display: flex; flex-direction: column; height: 100dvh; }
-    header { padding: 12px 16px; background: #111827; border-bottom: 1px solid #1f2937; }
-    header strong { color: #29a383; }
-    #status { font-size: 0.82rem; color: #94a3b8; margin-top: 2px; }
-    #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-    .msg { max-width: 85%; padding: 10px 14px; border-radius: 14px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
-    .user { background: #29a383; color: #052e16; font-weight: 500; align-self: flex-end; }
-    .ai { background: #111827; border: 1px solid #1f2937; align-self: flex-start; }
-    footer { padding: 10px; background: #111827; border-top: 1px solid #1f2937; display: flex; gap: 8px; }
-    input { flex: 1; padding: 12px; border-radius: 12px; border: 1px solid #334155; background: #0b1120; color: white; font-size: 1rem; }
-    button { padding: 0 18px; border-radius: 12px; border: none; background: #29a383; color: #052e16; font-weight: bold; }
-    button:disabled { opacity: 0.4; }
+    header { padding: 14px 16px; background: #111827; border-bottom: 1px solid #1f2937; display: flex; justify-content: space-between; align-items: center; }
+    header strong { color: #29a383; font-size: 1.1rem; }
+    header span { font-size: 0.8rem; color: #94a3b8; }
+    #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .msg { max-width: 85%; padding: 11px 15px; border-radius: 14px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; font-size: 0.96rem; }
+    .user { background: #29a383; color: #052e16; font-weight: 500; align-self: flex-end; border-bottom-right-radius: 4px; }
+    .ai { background: #111827; border: 1px solid #1f2937; align-self: flex-start; border-bottom-left-radius: 4px; }
+    footer { padding: 10px 12px; background: #111827; border-top: 1px solid #1f2937; display: flex; gap: 8px; }
+    input { flex: 1; padding: 12px 14px; border-radius: 12px; border: 1px solid #334155; background: #0b1120; color: white; font-size: 1rem; outline: none; }
+    button { padding: 0 18px; border-radius: 12px; border: none; background: #29a383; color: #052e16; font-weight: bold; font-size: 0.95rem; cursor: pointer; }
+    button:disabled { opacity: 0.5; }
   </style>
 </head>
 <body>
 
   <header>
     <strong>● Kele-ia</strong>
-    <div id="status">Vérification du navigateur...</div>
+    <span>En ligne · Direct &amp; Factuel</span>
   </header>
 
   <div id="chat">
-    <div class="msg ai">Bonjour ! Je suis Kele-ia. Patiente un instant pendant mon chargement initial...</div>
+    <div class="msg ai">Bonjour ! Je suis Kele-ia. Pose-moi n'importe quelle question : je réponds de façon directe, claire et factuelle.</div>
   </div>
 
   <footer>
-    <input id="prompt" type="text" placeholder="Pose ta question..." disabled />
-    <button id="send" disabled>Envoyer</button>
+    <input id="prompt" type="text" placeholder="Écris ta question ici..." autocomplete="off" />
+    <button id="send" onclick="envoyer()">Envoyer</button>
   </footer>
 
-  <script type="module">
-    import { pipeline, TextStreamer } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4/dist/transformers.min.js";
-
-    const statusEl = document.getElementById("status");
+  <script src="https://js.puter.com/v2/"></script>
+  <script>
     const chatEl = document.getElementById("chat");
     const inputEl = document.getElementById("prompt");
     const sendBtn = document.getElementById("send");
 
-    let generator = null;
-    const history = [{
-      role: "system",
-      content: "Tu es Kele-ia, un assistant polyvalent, direct, cohérent et professionnel, ouvert à tous les sujets. Réponds dans la langue de l'utilisateur (en français par défaut) de façon claire, structurée et sans détour inutile. Règle absolue : n'invente, ne simule et ne suppose jamais aucun fait, chiffre, lien, citation ou source. Si tu ne connais pas la réponse avec certitude ou si une information te manque, dis clairement « Je ne sais pas » ou explique exactement ce qu'il manque, sans jamais combler les vides par de la fiction."
-    }];
+    const history = [
+      {
+        role: "system",
+        content: "Tu es Kele-ia, un assistant polyvalent, direct, cohérent et professionnel, ouvert à tous les sujets. Réponds dans la langue de l'utilisateur (en français par défaut) de façon claire, structurée et sans détour inutile. Règle absolue : n'invente, ne simule et ne suppose jamais aucun fait, chiffre, lien, citation ou source. Si tu ne connais pas la réponse avec certitude ou si une information te manque, dis clairement « Je ne sais pas » ou explique exactement ce qu'il manque, sans jamais combler les vides par de la fiction."
+      }
+    ];
 
     function addMsg(text, cls) {
       const div = document.createElement("div");
@@ -59,44 +58,9 @@
       return div;
     }
 
-    async function init() {
-      let hasWebGPU = false;
-      try {
-        if (navigator.gpu) {
-          const adapter = await navigator.gpu.requestAdapter();
-          hasWebGPU = !!adapter;
-        }
-      } catch (e) {}
-
-      const mode = hasWebGPU ? "webgpu" : "wasm";
-      statusEl.textContent = `Chargement du modèle (mode ${mode.toUpperCase()})...`;
-
-      try {
-        generator = await pipeline(
-          "text-generation",
-          "onnx-community/Qwen3-0.6B-ONNX",
-          {
-            device: mode,
-            dtype: hasWebGPU ? "q4f16" : "q4",
-            progress_callback: (p) => {
-              if (p.status === "progress" && p.progress) {
-                statusEl.textContent = `Téléchargement (${mode.toUpperCase()}) : ${Math.round(p.progress)}%`;
-              }
-            }
-          }
-        );
-        statusEl.textContent = `✅ Prêt (${mode.toUpperCase()})`;
-        inputEl.disabled = false;
-        sendBtn.disabled = false;
-      } catch (err) {
-        statusEl.textContent = "❌ Erreur de chargement";
-        addMsg("Erreur : " + err.message, "ai");
-      }
-    }
-
     async function envoyer() {
       const texte = inputEl.value.trim();
-      if (!texte || !generator) return;
+      if (!texte) return;
 
       inputEl.value = "";
       inputEl.disabled = true;
@@ -106,31 +70,37 @@
       const aiBox = addMsg("Réflexion...", "ai");
       history.push({ role: "user", content: texte });
 
-      let reponse = "";
-      const streamer = new TextStreamer(generator.tokenizer, {
-        skip_prompt: true,
-        skip_special_tokens: true,
-        callback_function: (morceau) => {
-          reponse += morceau;
-          aiBox.textContent = reponse;
-          chatEl.scrollTop = chatEl.scrollHeight;
+      try {
+        const response = await puter.ai.chat(history, { stream: true });
+        let reponseComplete = "";
+        aiBox.textContent = "";
+
+        for await (const part of response) {
+          if (part?.text) {
+            reponseComplete += part.text;
+            aiBox.textContent = reponseComplete;
+            chatEl.scrollTop = chatEl.scrollHeight;
+          }
         }
-      });
 
-      const out = await generator(history, {
-        max_new_tokens: 400,
-        do_sample: false,
-        streamer
-      });
+        if (!reponseComplete) {
+          reponseComplete = String(response?.message?.content || response || "Aucune réponse reçue.");
+          aiBox.textContent = reponseComplete;
+        }
 
-      history.push({ role: "assistant", content: out[0].generated_text.at(-1).content });
-      inputEl.disabled = false;
-      sendBtn.disabled = false;
+        history.push({ role: "assistant", content: reponseComplete });
+      } catch (err) {
+        aiBox.textContent = "Erreur : " + (err?.message || JSON.stringify(err));
+      } finally {
+        inputEl.disabled = false;
+        sendBtn.disabled = false;
+        inputEl.focus();
+      }
     }
 
-    sendBtn.addEventListener("click", envoyer);
-    inputEl.addEventListener("keypress", (e) => { if (e.key === "Enter") envoyer(); });
-    init();
+    inputEl.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") envoyer();
+    });
   </script>
 </body>
 </html>
